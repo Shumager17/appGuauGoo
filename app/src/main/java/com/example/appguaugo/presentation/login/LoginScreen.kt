@@ -1,12 +1,14 @@
-package com.example.appguaugo.presentation.login // O el paquete que corresponda
+package com.example.appguaugo.presentation.login
 
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -15,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -22,47 +25,74 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.appguaugo.R // Asegúrate de que esta sea la ruta correcta a tu R
+import com.example.appguaugo.R
 import com.example.appguaugo.ui.theme.GuauBlueText
 import com.example.appguaugo.ui.theme.GuauYellow
 import com.example.appguaugo.ui.theme.GuauYellowDark
 import com.example.appguaugo.viewmodel.LoginUiState
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     loginState: LoginUiState,
     onLoginClick: (correo: String, contrasenha: String) -> Unit,
-    onGoogleLoginClick: () -> Unit,
+    onGoogleLoginClick: (GoogleSignInAccount) -> Unit,
     onRegisterClick: () -> Unit,
     onForgotPasswordClick: () -> Unit,
 ) {
-    // Estados para guardar el contenido de los campos de texto
     var correo by remember { mutableStateOf("") }
     var contrasenha by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
+    var correoError by remember { mutableStateOf<String?>(null) }
 
-    // Estructura principal con un Box para superponer los dos colores de fondo
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // --- SCRUM-15: Configurar Google Sign-In ---
+    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+        .requestEmail()
+        .build()
+    val googleSignInClient: GoogleSignInClient = GoogleSignIn.getClient(context, gso)
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(ApiException::class.java)
+                if (account != null) {
+                    onGoogleLoginClick(account)
+                }
+            } catch (e: ApiException) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // --- INTERFAZ ---
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(GuauYellow) // Fondo amarillo
+            .background(GuauYellow)
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- SECCIÓN SUPERIOR AMARILLA ---
             Spacer(modifier = Modifier.height(60.dp))
 
             Image(
-                painter = painterResource(id = R.drawable.logo_princ_guaoguao), // ¡USA TU LOGO AQUÍ!
+                painter = painterResource(id = R.drawable.logo_princ_guaoguao),
                 contentDescription = "Logo de GuauGuao",
                 modifier = Modifier
                     .size(100.dp)
-                    .background(
-                        Color.White,
-                        shape = RoundedCornerShape(16.dp)
-                    )
+                    .background(Color.White, shape = RoundedCornerShape(16.dp))
                     .padding(8.dp)
             )
 
@@ -77,11 +107,10 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(30.dp))
 
-            // --- TARJETA BLANCA INFERIOR ---
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(), // Ocupa el resto del espacio
+                    .fillMaxHeight(),
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
@@ -91,15 +120,27 @@ fun LoginScreen(
                         .padding(horizontal = 24.dp, vertical = 32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // --- CAMPOS DE TEXTO ---
+
+                    // --- SCRUM-14: Validar correo válido ---
                     OutlinedTextField(
                         value = correo,
-                        onValueChange = { correo = it },
+                        onValueChange = {
+                            correo = it
+                            correoError = if (it.isNotEmpty() && !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches()) {
+                                "Ingrese un correo válido (ejemplo@dominio.com)"
+                            } else null
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Correo Electrónico") },
                         singleLine = true,
+                        isError = correoError != null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                        supportingText = {
+                            correoError?.let {
+                                Text(it, color = Color.Red, fontSize = 12.sp)
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp)
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -110,7 +151,7 @@ fun LoginScreen(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Contraseña") },
                         singleLine = true,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
@@ -130,44 +171,49 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // --- BOTONES ---
                     Button(
-                        onClick = { onLoginClick(correo, contrasenha) },
+                        onClick = {
+                            // --- SCRUM-14: Validar antes de intentar login ---
+                            if (correoError == null && correo.isNotBlank() && contrasenha.isNotBlank()) {
+                                onLoginClick(correo.trim(), contrasenha.trim())
+                            }
+                        },
                         enabled = loginState !is LoginUiState.Loading,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = GuauYellowDark)
                     ) {
                         if (loginState is LoginUiState.Loading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = Color.White
-                            )
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
                         } else {
                             Text("INICIAR SESIÓN", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
-
                     Text("O inicia sesión con", color = Color.Gray, fontSize = 14.sp)
 
-
+                    // --- SCRUM-15: Botón Google Login ---
                     OutlinedButton(
-                        onClick = onGoogleLoginClick,
+                        onClick = {
+                            scope.launch {
+                                val signInIntent = googleSignInClient.signInIntent
+                                launcher.launch(signInIntent)
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
                             Image(
-                                painter = painterResource(id = R.drawable.ic_google_logo), // ¡USA TU LOGO DE GOOGLE!
+                                painter = painterResource(id = R.drawable.ic_google_logo),
                                 contentDescription = "Logo de Google",
                                 modifier = Modifier.size(24.dp)
                             )
@@ -176,9 +222,7 @@ fun LoginScreen(
                         }
                     }
 
-                    // Spacer para empujar el último texto hacia abajo
                     Spacer(modifier = Modifier.height(50.dp))
-
                     TextButton(onClick = onRegisterClick) {
                         Text("¿No tienes cuenta? Regístrate.", color = GuauBlueText, fontSize = 14.sp)
                     }
@@ -187,21 +231,3 @@ fun LoginScreen(
         }
     }
 }
-
-/*// --- PREVISUALIZACIÓN ---
-// ¡La mejor herramienta de Compose para ver tus diseños sin ejecutar la app!
-@Preview(showBackground = true, device = "id:pixel_8_pro")
-@Composable
-fun LoginScreenPreview() {
-    AppGuauGoTheme { // Usa tu tema para una previsualización más precisa
-        LoginnScreen(
-            loginState = { LoginUiState },
-            onLoginClick = { _, _ -> },
-            onGoogleLoginClick = { },
-            onRegisterClick = { },
-            onForgotPasswordClick = { }
-        )
-    }
-}*/
-
-
